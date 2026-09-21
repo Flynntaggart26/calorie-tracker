@@ -2,3 +2,7 @@
 .DS_Store
 Thumbs.db
 .vscode/
+# Python backend runtime
+__pycache__/
+*.pyc
+backend/cache.db

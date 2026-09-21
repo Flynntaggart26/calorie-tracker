@@ -11,7 +11,7 @@
 
 ### 🚀 Try it now → [flynntaggart26.github.io/calorie-tracker](https://flynntaggart26.github.io/calorie-tracker/)
 
-No install, no account, no backend. Your data never leaves your browser.
+No install, no account — works out of the box, and your data never leaves your browser. An optional Python backend adds barcode lookup + recipe import.
 
 ## Contents
 
@@ -22,6 +22,7 @@ No install, no account, no backend. Your data never leaves your browser.
 - [Screenshots (what you'll see)](#screenshots-what-youll-see)
 - [Project structure](#project-structure)
 - [Tech stack](#tech-stack)
+- [Backend API (Python)](#backend-api-python)
 - [Data & methodology](#data--methodology)
 - [Privacy & data](#privacy--data)
 - [Roadmap](#roadmap)
@@ -42,7 +43,7 @@ No install, no account, no backend. Your data never leaves your browser.
 
 | Area | Details |
 |------|---------|
-| 🍎 **Food database (120+ items)** | 13 categories — fruits, vegetables, grains, legumes, nuts & seeds, dairy & eggs, meat, fish & seafood, fats & oils, snacks & sweets, fast food, beverages, homemade. Every item carries **12 nutrients per 100 g**: calories, protein, carbs, fat, fiber, sugar, sodium, potassium, calcium, iron, vitamin C, vitamin A |
+| 🍎 **Food database (116 items)** | 13 categories — fruits, vegetables, grains, legumes, nuts & seeds, dairy & eggs, meat, fish & seafood, fats & oils, snacks & sweets, fast food, beverages, homemade. Every item carries **12 nutrients per 100 g**: calories, protein, carbs, fat, fiber, sugar, sodium, potassium, calcium, iron, vitamin C, vitamin A |
 | 🔍 **Smart logging** | Live search, category filter, sort by name / calories / protein, portion presets (50/100/150/250 g) or exact grams, 4 meals (Breakfast, Lunch, Dinner, Snacks), per-item macro breakdown, one-click delete |
 | 🎯 **Personal targets** | BMR via **Mifflin-St Jeor**, TDEE via activity multiplier, goal adjustment (cut → bulk). Auto macro split: protein ~1.7–2.0 g/kg, fat 25 % of kcal, remainder carbs. Water target 35 ml/kg |
 | 🧬 **Vital nutrients vs Daily Value** | Fiber 30 g · sugar < 50 g · sodium < 2300 mg · potassium 3500 mg · calcium 1000 mg · iron 18 mg · vitamin C 90 mg · vitamin A 900 mcg — live % bars plus a totals table with ✅ Hit / 🟡 Half / ⚠️ Over status |
@@ -52,6 +53,7 @@ No install, no account, no backend. Your data never leaves your browser.
 | ⚖️ **Weight log** | Track body weight alongside calories to see the trend against your goal |
 | 💾 **Persistence & export** | Everything in `localStorage` (daily log, water, profile, weights, history). One-click **CSV export** of the day's log |
 | 🌗 **Theme** | Dark / light mode, responsive down to phones |
+| 🔌 **Barcode + recipe import** | Optional `backend/` Python service: scan packaged-food barcodes (OpenFoodFacts, cached) and paste ingredient lists or recipe URLs — auto-matched nutrition with one-click dish logging |
 
 ## How targets are calculated
 
@@ -94,18 +96,49 @@ No install, no account, no backend. Your data never leaves your browser.
 
 ```
 calorie-tracker/
-├── index.html    # The entire app (markup + styles + 120-food DB + logic, ~31 KB)
+├── index.html    # The entire app (markup + styles + 116-food DB + logic)
+├── backend/      # Optional Python API: barcode lookup + recipe import
+│   ├── app.py            # FastAPI endpoints, OpenFoodFacts client, SQLite cache
+│   ├── nutrition.py      # stdlib-only parsing / units / fuzzy matching
+│   ├── export_foods.py   # index.html FOODS array -> foods.json
+│   ├── foods.json        # generated DB snapshot (regenerate after FOODS edits)
+│   ├── test_backend.py   # offline logic + live API tests
+│   └── requirements.txt
 ├── README.md     # This file
 └── .gitignore    # OS / editor noise
 ```
 
 Everything lives in `index.html`: the `FOODS` array is the database, `targets()` computes goals,
 `render()` redraws dashboard + charts, and `save()` persists to `localStorage`.
+The `backend/` service is strictly optional — the app degrades gracefully when it is offline.
 
 ## Tech stack
 
-Vanilla HTML/CSS/JS + Chart.js 4 (CDN). No framework, no build step, no backend — easy to audit,
+Vanilla HTML/CSS/JS + Chart.js 4 (CDN) for the app — no framework, no build step, easy to audit,
 fork and host anywhere (GitHub Pages serves this repo's `index.html` as the live app).
+Optional Python backend: FastAPI + httpx + SQLite (`backend/`, see [Backend API](#backend-api-python)).
+
+## Backend API (Python)
+
+Optional service in [`backend/`](backend/) — the app works fully without it
+(the Barcode & recipe panel shows "backend offline" and everything else keeps working).
+
+| Endpoint | What it does |
+|----------|--------------|
+| `GET /health` | Status + loaded food count |
+| `GET /api/barcode/{code}` | OpenFoodFacts lookup normalized to the app's per-100 g schema, cached in SQLite |
+| `POST /api/recipe` | `{text?, url?, servings?}` — parses ingredient lines (quantities, fractions, cups/tbsp/tsp/ml/oz, piece weights), fuzzy-matches against the app DB, returns per-ingredient grams + totals + per-serving. URLs are read via embedded `schema.org/Recipe` JSON-LD |
+
+```bash
+cd backend
+python export_foods.py        # index.html FOODS array -> foods.json (single source of truth)
+pip install -r requirements.txt
+uvicorn app:app --port 8001
+python test_backend.py        # offline logic + live API tests
+```
+
+Then set the **Backend API URL** field in the app to `http://localhost:8001` (saved in
+`localStorage`). Details in [`backend/README.md`](backend/README.md).
 
 ## Data & methodology
 
@@ -116,14 +149,16 @@ preparation; mixed/fast-food micronutrients are estimates. For medical-precision
 ## Privacy & data
 
 All data (food log, water, profile, custom foods, weights, history) is stored in your browser's
-`localStorage` — per device, per browser. Nothing is uploaded anywhere; there is no server to
-breach. Clearing browser site data erases it, so use CSV export for records you want to keep.
+`localStorage` — per device, per browser. Nothing is uploaded anywhere by the app itself.
+(The optional barcode/recipe backend only contacts OpenFoodFacts — or a recipe URL you paste —
+when you explicitly use those buttons.) Clearing browser site data erases it, so use CSV export for records you want to keep.
 
 ## Roadmap
 
 - [ ] Vitamin D, B12, magnesium, zinc tracking
-- [ ] Barcode / packaged-food label quick entry
-- [ ] Recipe builder (combine ingredients into one custom dish)
+- [x] Barcode / packaged-food label quick entry (via `backend/` + OpenFoodFacts)
+- [x] Recipe import — paste ingredients or a recipe URL (via `backend/`)
+- [ ] Recipe builder v2 (combine saved dishes, per-ingredient editing in-app)
 - [ ] Weekly averages + streaks
 - [ ] PWA install + true offline (service worker) so charts work without network
 - [ ] Import/export full backup JSON

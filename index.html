@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Advanced Calorie Tracker — Macros, Micros & Vital Rates</title>
-<meta name="description" content="Advanced calorie tracker with 150+ foods, macros, vitamins, minerals, BMR/TDEE targets, hydration and weekly analytics.">
+<meta name="description" content="Advanced calorie tracker with 116 foods, macros, vitamins, minerals, BMR/TDEE targets, hydration and weekly analytics.">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
 <style>
 :root,[data-theme="dark"]{--bg:#0f0f14;--card:#1a1a22;--border:#2e2e3e;--primary:#6C5CFF;--success:#00D9A5;--warning:#FFB800;--danger:#FF6B6B;--info:#4FC3F7;--text:#f5f5ff;--muted:#9aa0b5;--input:#23232e}
@@ -41,7 +41,7 @@ canvas{max-width:100%}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.
 </head>
 <body>
 <header>
-<h1>🔥 Advanced Calorie Tracker <small>150+ foods · macros · vitamins & minerals · BMR/TDEE · local storage</small></h1>
+<h1>🔥 Advanced Calorie Tracker <small>116 foods · macros · vitamins & minerals · BMR/TDEE · local storage</small></h1>
 <button id="themeBtn" title="Toggle theme">Theme</button>
 <button id="exportBtn" title="Export day log as CSV">Export CSV</button>
 <button id="resetDayBtn" class="danger" title="Clear today's log">Reset day</button>
@@ -109,6 +109,18 @@ canvas{max-width:100%}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.
 <div class="field"><label>Quick presets</label><div class="row">
 <button data-g="50">50g</button><button data-g="100">100g</button><button data-g="150">150g</button><button data-g="250">250g</button>
 </div></div>
+</div>
+<div class="card" style="margin-top:12px;border-style:dashed">
+<h3>🔌 Barcode &amp; recipe import <span class="pill">(needs Python backend)</span></h3>
+<div class="row">
+<div class="field"><label>Backend API URL</label><input id="apiBase" placeholder="http://localhost:8001" style="width:190px"></div>
+<div class="field"><label>Barcode</label><div class="row"><input id="barcodeInput" placeholder="e.g. 3017620422003" style="width:170px"><button id="barcodeBtn">Look up</button></div></div>
+<div class="field"><label>&nbsp;</label><span class="pill" id="apiStatus">○ backend unchecked</span></div>
+</div>
+<div class="field" style="margin-top:8px"><label>Recipe — paste ingredient lines or a recipe URL</label><textarea id="recipeInput" rows="3" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:.85rem" placeholder="2 cups rolled oats&#10;1 banana&#10;250 ml milk&#10;or https://www.example.com/recipe"></textarea></div>
+<div class="row" style="margin-top:6px"><div class="field"><label>Servings</label><input type="number" id="recipeServings" value="1" min="1" style="width:70px"></div><div class="field"><label>&nbsp;</label><button id="recipeBtn" class="primary">Parse recipe</button></div></div>
+<div id="apiResult" style="margin-top:8px"></div>
+<p class="pill">Backend: <code>cd backend &amp;&amp; uvicorn app:app --port 8001</code> · barcodes via OpenFoodFacts · recipes via text or schema.org URL. See <code>backend/README.md</code>.</p>
 </div>
 <div class="food-list" id="foodList" style="margin-top:10px"></div>
 <div class="card" style="margin-top:12px;border-style:dashed">
@@ -294,6 +306,15 @@ $("themeBtn").onclick=()=>{const h=document.documentElement;h.dataset.theme=h.da
 $("addCustom").onclick=()=>{const f={name:$("cName").value||"Custom food",cat:"Custom",kcal:+$("cKcal").value||0,p:+$("cP").value||0,c:+$("cC").value||0,f:+$("cF").value||0,fib:+$("cFib").value||0,sug:0,na:0,k:0,ca:0,fe:0,vc:0,va:0};customFoods.push(f);log.push({name:f.name,grams:100,meal:$("mealSel").value});save();render();renderFoods();};
 $("weightAdd").onclick=()=>{const w=parseFloat($("weightInput").value);if(!w)return;weights.push({d:todayKey(),w});$("weightInput").value="";save();drawWeek();};
 $("shareBtn")?.remove;
+/* ============ BACKEND API (barcode + recipe, optional Python service) ============ */
+let apiBase=(localStorage.getItem("ct_api")||"http://localhost:8001").replace(/\/+$/,"");
+async function api(path,opts){const r=await fetch(apiBase+path,opts);if(!r.ok){let t="";try{t=await r.text();}catch(e){}throw new Error(t.slice(0,120)||("HTTP "+r.status));}return r.json();}
+function apiFoodToCustom(f){return{name:f.name,cat:f.cat||"Imported",kcal:+f.kcal||0,p:+f.p||0,c:+f.c||0,f:+f.f||0,fib:+f.fib||0,sug:+f.sug||0,na:+f.na||0,k:+f.k||0,ca:+f.ca||0,fe:+f.fe||0,vc:+f.vc||0,va:+f.va||0};}
+function logCustomFood(f,grams){const ex=customFoods.find(x=>x.name===f.name);if(ex)Object.assign(ex,f);else customFoods.push(f);log.push({name:f.name,grams:Math.round(grams),meal:$("mealSel").value});save();render();renderFoods();}
+$("apiBase").value=apiBase;
+$("apiBase").onchange=()=>{apiBase=$("apiBase").value.trim().replace(/\/+$/,"")||"http://localhost:8001";localStorage.setItem("ct_api",apiBase);$("apiStatus").textContent="○ backend unchecked";};
+$("barcodeBtn").onclick=async()=>{const code=$("barcodeInput").value.trim();if(!code)return;const box=$("apiResult");box.innerHTML="<p class='pill'>Looking up…</p>";try{const f=await api("/api/barcode/"+encodeURIComponent(code));box.innerHTML=`<div class="food-item"><span><b>${f.name}</b> <span class="tag">${f.brand||"Scanned"}</span>${f.cached?' <span class="tag">cached</span>':""}</span><span><button id="scanAdd" class="primary">+ Log ${$("portion").value}g</button></span><span class="meta">100g: ${f.kcal} kcal · P${f.p}g C${f.c}g F${f.f}g · fiber ${f.fib}g · sug ${f.sug}g · Na ${f.na}mg</span></div>`;$("scanAdd").onclick=()=>logCustomFood(apiFoodToCustom(f),parseInt($("portion").value)||100);$("apiStatus").textContent="● backend connected";}catch(e){box.innerHTML=`<p class='pill'>❌ ${e.message} — is the backend running at ${apiBase}?</p>`;$("apiStatus").textContent="○ backend offline";}};
+$("recipeBtn").onclick=async()=>{const text=$("recipeInput").value;if(!text.trim())return;const box=$("apiResult");box.innerHTML="<p class='pill'>Parsing…</p>";try{const isUrl=/^https?:\/\/\S+$/i.test(text.trim());const body=isUrl?{url:text.trim()}:{text,srv:parseInt($("recipeServings").value)||1};if(!isUrl)body.servings=body.srv,delete body.srv;const r=await api("/api/recipe",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const rows=r.items.map(i=>`<tr><td>${i.line}</td><td>${i.food}${i.approx?" ~":""}</td><td>${i.grams}g</td><td>${Math.round(i.nutrients.kcal)}</td></tr>`).join("");const un=r.unmatched.length?`<p class='pill'>⚠️ Unmatched: ${r.unmatched.map(u=>u.line).join("; ")}</p>`:"";box.innerHTML=`<div style="overflow:auto"><table><thead><tr><th>Ingredient</th><th>Matched</th><th>Grams</th><th>kcal</th></tr></thead><tbody>${rows}</tbody></table></div><p class='pill'>Total ${Math.round(r.totals.kcal)} kcal (${r.total_grams}g) · per serving (×${r.servings}): ${Math.round(r.per_serving.kcal)} kcal · P${r.per_serving.p} C${r.per_serving.c} F${r.per_serving.f}</p>${un}<div class="row"><button id="recWhole" class="primary">Log whole dish (${Math.round(r.total_grams)}g)</button><button id="recServ">Log 1 serving (${Math.round(r.total_grams/r.servings)}g)</button></div>`;const mkDish=(grams)=>{const t=r.totals,g=r.total_grams||grams;logCustomFood(apiFoodToCustom({name:"Recipe dish "+todayKey(),cat:"Imported",kcal:t.kcal/g*100,p:t.p/g*100,c:t.c/g*100,f:t.f/g*100,fib:t.fib/g*100,sug:t.sug/g*100,na:t.na/g*100,k:t.k/g*100,ca:t.ca/g*100,fe:t.fe/g*100,vc:t.vc/g*100,va:t.va/g*100}),grams);};$("recWhole").onclick=()=>mkDish(r.total_grams);$("recServ").onclick=()=>mkDish(r.total_grams/r.servings);$("apiStatus").textContent="● backend connected";}catch(e){box.innerHTML=`<p class='pill'>❌ ${e.message}</p>`;$("apiStatus").textContent="○ backend offline";}};
 /* init */
 (function init(){const cats=[...new Set(ALL().map(f=>f.cat))].sort();for(const c of cats){const o=document.createElement("option");o.textContent=c;$("catFilter").appendChild(o);}bindProfile();render();renderFoods();setTimeout(()=>{render();},800);})();
 </script>
